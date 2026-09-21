@@ -1,17 +1,41 @@
 **English** | [简体中文](README.zh-CN.md)
 
-# cxmon — XueXiTong / Chaoxing sign-in monitor (voice + WeChat alerts)
+# cxmon — XueXiTong / Chaoxing sign-in monitor
 
-Watches your XueXiTong (学习通 / Chaoxing) account and, the moment a teacher starts a
-sign-in (签到), alerts you with **Chinese TTS speech + a beep + a Windows toast**, and
-optionally a **push to your phone**. You still tap the sign-in button yourself.
+> So you actually notice the sign-in, while it still counts.
 
-> **Detect and alert only — it never signs in for you.**
-> Auto-signing violates the platform's terms of use and can get your attendance flagged,
-> so this tool deliberately doesn't do it.
+If your classes use XueXiTong (学习通 / Chaoxing), you know the moment: the teacher says
+"sign in now", and you're heads-down taking notes, queueing at the canteen, just drifting off,
+or your phone is on silent at the bottom of your bag. By the time someone posts "don't forget
+to sign in", the window has closed — and that's an absence on your record.
 
-**Platform**: Windows + Python 3.8 or newer. **Zero third-party dependencies**
-(standard library only — there is nothing to `pip install`).
+A XueXiTong sign-in window is usually only **1–3 minutes long**, and it doesn't shout: it just
+appears quietly in the course activity list and waits for you to look. This tool does the
+looking. Within seconds of a teacher starting a sign-in, your PC **says it out loud**
+("Attention, Calculus started a location sign-in"), a toast pops up, and if you configured
+phone push, WeChat buzzes too.
+
+**You still tap the sign-in button yourself** (on your phone or tablet) — it just won't slip
+past you anymore.
+
+The reason this exists is simple: **I missed sign-ins myself, more than once.**
+
+### What it deliberately does *not* do (more important than what it does)
+
+- ❌ **It never signs in for you.** Auto-signing violates the platform's terms of use and can get
+  your attendance flagged, so this tool stays out of it.
+- ❌ It doesn't forge or modify anything, and doesn't touch your grades, homework or messages.
+- ❌ **It doesn't upload anything.** Your login credential lives only in `config.json` on your own
+  machine (listed in `.gitignore`, so it can never be committed).
+
+### Who it's for
+
+- Anyone whose classes use XueXiTong sign-ins (online or in person)
+- Any sign-in type the teacher picks (normal / location / QR / gesture)
+- Especially **people who are often away from their PC** — that's when phone push earns its keep
+
+**Platform**: Windows + Python 3.8+. **Zero third-party dependencies** (standard library only —
+there is nothing to `pip install`).
 
 > The repository is named `xuexitong-qiandao`; the internal Python package is `cxmon`
 > (shorter to type). The launcher script is `启动监控.bat` (Chinese for "start monitoring").
@@ -281,6 +305,8 @@ Bugs found and fixed along the way (all now covered by checks):
 ---
 
 ## 8. FAQ
+
+Most questions are answered below. If yours isn't, open an issue and paste your `monitor.log`.
 
 **How often does it check?** Every 8–10 seconds by default; a round takes ~0.5s. Detection
 latency is therefore about 10 seconds worst case. Measurements show the platform itself needs
