@@ -1,0 +1,16 @@
+# 默认按文本处理，自动识别
+* text=auto
+
+# Windows 脚本必须用 CRLF 换行，否则 .bat 里的标签/跳转可能出错
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+*.cmd text eol=crlf
+
+# Python / 文档用 LF
+*.py text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+
+# 二进制文件不要动
+*.ico binary
+*.png binary

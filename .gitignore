@@ -1,0 +1,19 @@
+# ---- 隐私文件：绝对不要提交 ----
+# config.json 里装着学习通 Cookie 和你的推送 key，等同于账号凭证
+config.json
+state.json
+state.json.tmp
+
+# ---- 运行产物 ----
+*.log
+monitor.log
+*.pid
+panel.pid
+tray.pid
+monitor.pid
+panel.show
+
+# ---- Python ----
+__pycache__/
+*.pyc
+*.pyo

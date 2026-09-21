@@ -1,0 +1,36 @@
+{
+  "cookie": "",
+  "fid": "",
+  "uid": "",
+
+  "poll_interval": 5.0,
+  "jitter": 1.5,
+  "request_timeout": 10,
+  "http_retries": 2,
+  "auto_discover": true,
+  "discover_interval": 600,
+  "targets": [],
+
+  "match": {
+    "types": [2],
+    "name_keywords": ["签到", "签退"]
+  },
+
+  "alert": {
+    "voice": true,
+    "voice_name": "",
+    "voice_rate": 1,
+    "voice_text": "注意，{course}发起了{name}，请尽快打开学习通处理",
+    "repeat": 3,
+    "repeat_interval": 5.0,
+    "realert_after": 0,
+    "beep": true,
+    "toast": true,
+    "open_url": false,
+    "sign_url_template": "https://mobilelearn.chaoxing.com/pptSign/stuSign?activeId={activeId}",
+    "webhook": ""
+  },
+
+  "state_file": "state.json",
+  "log_file": "monitor.log"
+}
