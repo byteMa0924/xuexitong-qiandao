@@ -8,7 +8,7 @@
 
 **平台**：Windows + Python 3.8 以上。**零第三方依赖**（只用标准库，`pip install` 什么都不用装）。
 
-> 仓库名是 `chaoxing-signin-monitor`，程序内部的包名是 `cxmon`（短一点，方便敲命令）。
+> 仓库名是 `xuexitong-qiandao`（学习通签到），程序内部的包名是 `cxmon`（短一点，方便敲命令）。
 
 ---
 
