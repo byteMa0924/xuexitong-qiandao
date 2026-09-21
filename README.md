@@ -271,6 +271,21 @@ Pick one:
 Then verify with `python cxmon.py test-alert`. A wrong key is reported explicitly
 (e.g. DingTalk's `token is not exist`), never silently "successful".
 
+### What the phone notification looks like
+
+This is the exact title + body that arrives (here on WeChat) — enough to tell which course
+and which kind of sign-in it is at a glance:
+
+```
+【学习通签到】高等数学
+活动：位置签到
+时间：2026-09-21 11:11:22
+activeId：1234567890
+请尽快打开学习通完成签到。
+```
+
+Measured: from detecting the sign-in to the message landing on the phone took about **1 second**.
+
 ---
 
 ## 7. What has actually been verified
