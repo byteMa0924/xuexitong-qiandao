@@ -1,426 +1,390 @@
-# cxmon —— 学习通签到监控（语音 + 微信提醒）
+**English** | [简体中文](README.zh-CN.md)
 
-盯着你的学习通账号，**一旦有老师发起新签到，立刻用中文语音 + 提示音 + 右下角弹窗提醒你**，
-可选再推一条消息到你手机。你在手机/平板上自己点签到。
+# cxmon — XueXiTong / Chaoxing sign-in monitor (voice + WeChat alerts)
 
-> **只做「发现 + 提醒」，不做自动签到。**
-> 自动签属于违反学习通使用规则的行为，可能导致签到记录被判异常，所以这个工具不碰它。
+Watches your XueXiTong (学习通 / Chaoxing) account and, the moment a teacher starts a
+sign-in (签到), alerts you with **Chinese TTS speech + a beep + a Windows toast**, and
+optionally a **push to your phone**. You still tap the sign-in button yourself.
 
-**平台**：Windows + Python 3.8 以上。**零第三方依赖**（只用标准库，`pip install` 什么都不用装）。
+> **Detect and alert only — it never signs in for you.**
+> Auto-signing violates the platform's terms of use and can get your attendance flagged,
+> so this tool deliberately doesn't do it.
 
-> 仓库名是 `xuexitong-qiandao`（学习通签到），程序内部的包名是 `cxmon`（短一点，方便敲命令）。
+**Platform**: Windows + Python 3.8 or newer. **Zero third-party dependencies**
+(standard library only — there is nothing to `pip install`).
+
+> The repository is named `xuexitong-qiandao`; the internal Python package is `cxmon`
+> (shorter to type). The launcher script is `启动监控.bat` (Chinese for "start monitoring").
 
 ---
 
-## 0. 五分钟上手
+## 0. Quick start (about 5 minutes)
 
 ```bat
-:: 1) 下载后先自检环境（会顺便让你试听一次语音）
+:: 1) Check your environment and hear a sample of the voice
 python cxmon.py doctor --speak
 
-:: 2) 把学习通的登录信息导进来（详见第 3 节，三种办法）
+:: 2) Import your sign-in credentials (three ways, see section 3)
 python cxmon.py browser-cookie
 
-:: 3) 开始监控
-python cxmon.py panel        :: 或者直接双击 启动监控.bat
+:: 3) Start monitoring
+python cxmon.py panel          :: or just double-click 启动监控.bat
 
-:: 想先看效果、不想动账号？
+:: Want to see it work without touching your account?
 python cxmon.py monitor --mock
 ```
 
-上班/上课前双击 `启动监控.bat` → 点「开始监控」；下课后点「停止监控」。
-详细的界面说明见第 2 节。
+Before class, double-click `启动监控.bat` and press **Start monitoring**; after class,
+press **Stop monitoring**. See section 2 for the UI.
 
-### 关于微信推送（重要）
+### About WeChat / phone push (important)
 
-**微信/钉钉推送需要你自己配一个地址，工具里不含、也不会带任何人的 key。**
+**Phone push has to be configured by each user — this repo contains nobody's keys.**
 
-- 不配也能用：电脑会**语音播报 + 响铃 + 右下角弹窗**。
-- 想推到手机：自己去 [Server酱](https://sct.ftqq.com/) 申请一个 SendKey
-  （或建钉钉/企业微信机器人），把地址填进 `config.json` 的 `alert.webhook`。
-  具体步骤见第 7 节。
+- Works with no setup: **speech + beep + Windows toast on your PC**.
+- To get it on your phone, create your own push channel (e.g. a
+  [Server酱](https://sct.ftqq.com/) SendKey, or a DingTalk / WeCom group bot) and put the
+  URL into `alert.webhook` in `config.json`. Steps are in section 6.
 
-原因很简单：推送通道是「每个人自己的账号绑自己的微信」，所以只能各自配置。
+The reason is simple: a push channel is bound to *your own* WeChat account, so every user
+brings their own.
 
-### 这个目录里的文件
+### What is in this folder
 
-| 文件 | 作用 | 你需要动它吗 |
+| File | Purpose | Do you need to touch it? |
 | --- | --- | --- |
-| `启动监控.bat` | 双击 = 打开控制面板 | 双击它就行 |
-| `config.json` | 你的配置（**含 Cookie，别外传**） | 一般不用，面板按钮会改 |
-| `state.json` | 已提醒过的签到记录（去重用） | 不用管 |
-| `monitor.log` | 运行日志：每轮扫描、命中、报错都在这 | 出问题时贴出来 |
-| `monitor.pid` / `tray.pid` | 正在运行的监控 / 托盘进程号 | 不用管 |
-| `app-icon.ico` | 桌面/托盘图标（绿底白勾，7 种尺寸 16~256） | 不用管 |
-| `README.md` | 就是本文 | 忘了就看 |
-| `cxmon/` | 程序代码本体 | 不用管 |
+| `启动监控.bat` | Double-click to open the control panel | Just double-click it |
+| `config.json` | Your settings (**contains your Cookie — never share it**) | Usually no; the panel edits it |
+| `state.json` | Already-alerted sign-ins (used for de-duplication) | No |
+| `monitor.log` | Run log: every scan, hit and error | Paste it when reporting a problem |
+| `monitor.pid` / `tray.pid` | PIDs of the running monitor / tray process | No |
+| `app-icon.ico` | Desktop / tray icon (green check, 7 sizes 16–256 px) | No |
+| `README.md` / `README.zh-CN.md` | This document / 中文说明 | When you forget something |
+| `cxmon/` | The program itself | No |
 
-> `config.json`、`state.json`、`monitor.log` 已经在 `.gitignore` 里，
-> **不会被提交到 git**。你的 Cookie 只存在自己电脑上。
+> `config.json`, `state.json` and `monitor.log` are listed in `.gitignore`, so they are
+> **never committed**. Your Cookie stays on your own machine.
 
-### 文件都在哪（找不到就看这里）
+### Where the files are
 
-**完整路径**：解压/克隆出来的那个 `chaoxing-monitor` 目录，比如
-`C:\Users\<你的用户名>\Documents\chaoxing-monitor`
-
-打开方式，随便哪个都行：
-
-1. 桌面图标「**学习通签到监控**」→ 双击打开控制面板（如果建了的话）
-2. 面板里左下角的「**打开项目文件夹**」按钮 → 一键打开这个目录
-3. 在资源管理器里直接进这个目录
-
-目录里的每个文件是干什么的：
-
-| 文件 | 作用 | 你需要动它吗 |
-| --- | --- | --- |
-| `启动监控.bat` | 双击 = 打开控制面板 | 双击它就行 |
-| `config.json` | 你的配置（**含 Cookie，别外传**） | 一般不用，面板按钮会改 |
-| `state.json` | 已提醒过的签到记录（去重用） | 不用管 |
-| `monitor.log` | 运行日志：每轮扫描、命中、报错都在这 | 出问题时发给作者 |
-| `monitor.pid` / `tray.pid` | 正在运行的监控 / 托盘进程号 | 不用管 |
-| `app-icon.ico` | 桌面/托盘图标（绿底白勾，7 种尺寸 16~256） | 不用管 |
-| `README.md` | 就是本文 | 忘了就看 |
-| `cxmon/` | 程序代码本体 | 不用管 |
+The folder you cloned or unzipped, e.g. `C:\Users\<you>\Documents\cxmon`.
+You can open it from the control panel with the **Open project folder** button.
 
 ---
 
-## 1. 它是怎么工作的
+## 1. How it works
 
-学习通 App / 网页里「正在进行中的课堂活动」来自移动端接口：
+XueXiTong's "activities happening right now" come from a mobile web API:
 
-| 用途 | 接口 |
+| Purpose | Endpoint |
 | --- | --- |
-| 我有哪些课 / 班 | `GET https://mooc1-api.chaoxing.com/mycourse/backclazzdata?view=json&rss=1` |
-| 某个班的活动列表 | `GET https://mobilelearn.chaoxing.com/v2/apis/active/student/activelist?fid=..&courseId=..&classId=..` |
+| Which courses/classes you have | `GET https://mooc1-api.chaoxing.com/mycourse/backclazzdata?view=json&rss=1` |
+| Activities running in a class | `GET https://mobilelearn.chaoxing.com/v2/apis/active/student/activelist?fid=..&courseId=..&classId=..` |
 
-工具每隔几秒把这些接口扫一遍，发现「没见过的、正在进行中的签到」就报警。
+The tool polls those endpoints every few seconds with your own Cookie and raises an alert
+when it sees an **ongoing sign-in it has not seen before**.
 
-### 实测出来的字段规律（2026-09，26 个班 148 条真实记录）
+### Field quirks that matter (measured on 148 real records, 2026-09)
 
-这几条是踩过坑才确认的，直接决定了工具准不准：
+These were discovered the hard way; they decide whether the tool is accurate:
 
-| 发现 | 说明 |
+| Finding | Why it matters |
 | --- | --- |
-| **签到的 `type` 是 `2`** | 普通签到 / 位置签到 / 二维码签到 / 手势签到全是 `type=2`；随堂练习是 `42`、选人是 `11`、通知是 `45` |
-| **活动名在 `nameOne`**，不在 `name` | 真实签到记录里 `name` 是空的，`nameOne` 才是「位置签到」这种可读名字 |
-| **`otherId` 不是活动 ID** | `otherId` 是签到子类型（如 `4`=位置签到），真正的活动 ID 在 **`id`** 字段（`3000171777685` 这种 13 位数）。早期版本误把 `otherId` 当 ID，会导致**所有位置签到共用同一个 key，第一次提醒之后再也不会报** —— 已在代码里修正并加了回归测试 |
-| **接口会返回历史活动** | 实测 148 条里包含 4 月、5 月的老签到，全部 `status=2`（已结束）。所以必须按时间窗过滤，否则第一次启动就会把几个月的旧签到全报一遍 |
+| **Sign-ins have `type == 2`** | Normal / location / QR / gesture sign-ins are all `type=2`; in-class quizzes are `42`, "pick a student" is `11`, notices are `45` |
+| **The readable name is in `nameOne`, not `name`** | In real records `name` is empty and `nameOne` holds "位置签到" (location sign-in) |
+| **`otherId` is NOT the activity id** | `otherId` is the sign-in *sub-type* (e.g. `4` = location). The real activity id is `id` (a 13-digit number). An early version used `otherId`, so **every location sign-in shared one key — it alerted once and then stayed silent forever** |
+| **The API also returns history** | Those 148 records included sign-ins from months earlier, all `status=2` (finished). Without a time filter, the first run would have alerted on months of old sign-ins |
 
-因此工具的实际判断是：**（类型=2 或名字含"签到/签退"）且（开始时间已到 且 结束时间未过）**。
-
----
-
-## 2. 日常使用（双击 → 面板，不用记命令）
-
-双击 `启动监控.bat` 打开控制面板（下图是演示数据，不是真实账号）：
-
-![控制面板](docs/panel.png)
-
-**上课前**：双击 → 点「▶ 开始监控」 → 关掉窗口（选「只关窗口，监控继续」）
-**下课后**：双击 → 点「■ 停止监控」
-
-双击后弹出的是一个图形控制面板：
-
-```
-●  监控中                          ← 一眼看出到底有没有在跑
-进程 PID 1234 · 正在盯着你的课程
-
-[ ▶   开始监控 ]                   ← 一个主按钮，文案跟着状态变
-[ 测试提醒 ]   [ 更新 Cookie ]
-
-▸  运行信息                        ← 默认收起，点一下才展开（界面干净）
-   今日命中 / 最近一次检测 / Cookie / 提醒方式 / 扫描设置 / 最近心跳
-
-最近记录
-  11:11:22  新签到 | 课程=高等数学 | 活动=位置签到
-  11:11:36  已推送手机通知
-
-[打开项目文件夹]  C:\Users\你的用户名\Documents\chaoxing-monitor
-```
-
-几个设计细节：
-
-- **关窗口时问你三个选择**（不会偷偷把监控关掉让你漏签）：
-  - 「**是**」= 停止监控并**完全退出**（右下角托盘图标也一起消失）
-  - 「**否**」= 只关这个窗口，**监控继续跑**；右下角的托盘图标会留着
-  - 「取消」= 什么都不做
-- **托盘图标**（右下角）：**单击**就打开面板；鼠标悬停显示状态「监控中（今日命中 N 次）/ 已停止」；
-  右键菜单有「打开面板 / 停止监控 / 退出」。它就是"关掉窗口之后，它在哪"的答案。
-- **面板只会有一个**：重复双击桌面图标不会开出第二个窗口（用 Windows 命名互斥体保证），
-  只会把已有窗口叫到最前面。
-- **托盘会自愈**：托盘图标实测会意外消失（日志里只有「已显示」没有「已移除」= 进程被杀）。
-  监控进程每 30 秒检查一次，发现没有托盘就自动补一个，所以你永远找得回来。
-- **面板和监控是两个独立进程**：面板崩了、被误关了，监控照样在跑；重开面板就能看到状态。
-- **不会重复启动**：已经有一个监控在跑时，双击 bat 或再运行命令都会被拒绝并提示（否则同一场签到会提醒两遍、微信推两条）。这条防线同时保护了"我忘了它还在跑"的情况。
-- **「更新 Cookie」按钮**：Cookie 失效后点它，会自动从学习通 PC 客户端重新读取并验证，失败会告诉你怎么手动弄。
-- **「打开项目文件夹」按钮**：一键打开本目录，配置和日志都在里面。
-
-命令行方式仍然可用（适合脚本/计划任务）：`python cxmon.py monitor`。
+So the actual rule is: **(type == 2, or the name contains 签到/签退) AND (already started) AND (not yet ended)**.
 
 ---
 
-## 3. Cookie 怎么来（三种方式，按省事程度排序）
+## 2. Daily use (double-click, no command line)
 
-Cookie 就是你的登录凭证，工具靠它读接口。**Cookie 一般能活几周**，失效后工具会明确提示。
+Double-clicking `启动监控.bat` opens the control panel (demo data in the screenshot, not a real account):
 
-### 方法一：从学习通 PC 客户端自动读取 ✅（本机用的就是这个）
+![Control panel](docs/panel.png)
 
-学习通 PC 客户端（`D:\cxstudy\cxstudy.exe`）本质是个 Electron 程序，它自己存了一份
-Cookie 在 `%APPDATA%\cxstudy\Network\Cookies`，**而且没有用浏览器的 App-Bound 加密**，
-所以能被直接解开：
+**Before class**: double-click → press **Start monitoring** → close the window (choose "keep monitoring").
+**After class**: double-click → press **Stop monitoring**.
+
+Design details:
+
+- **Closing the window asks what you want**: stop and quit completely / keep monitoring in the
+  background / cancel. It never silently stops monitoring and makes you miss a sign-in.
+- **Single primary button**: its label always matches reality (`Start monitoring` ⇄ `Stop monitoring`),
+  so the UI can never show contradictory state.
+- **Runtime info is collapsed by default** behind a small `▸ Runtime info` button; expanding it
+  grows the window instead of squeezing the log.
+- **Tray icon** (bottom-right): **single-click** opens the panel; hovering shows the current state;
+  right-click gives Open panel / Start or stop monitoring / Quit. If the tray ever disappears
+  (it can be killed), the monitor re-creates it within 30 seconds.
+- **Only one panel, ever**: a Windows named mutex guarantees a second launch just brings the
+  existing window to the front.
+- **The panel and the monitor are separate processes**: if the panel crashes or is closed,
+  monitoring continues.
+
+---
+
+## 3. Getting your Cookie
+
+The Cookie is your login credential; the tool uses it to read the API. It usually stays valid
+for weeks. **Never share it and never commit it.**
+
+### Method 1: from the XueXiTong PC client (easiest — recommended)
+
+The official Windows client (`cxstudy.exe`) is an Electron app that keeps its own Cookie
+database at `%APPDATA%\cxstudy\Network\Cookies`, and **it does not use App-Bound encryption**,
+so it can be read:
 
 ```bat
 python cxmon.py browser-cookie
 ```
 
-它会自动读出来 → 拿去请求学习通**真实验证** → 通过就写入 `config.json`。全程不打印明文。
+It reads the Cookie, **verifies it against the live API**, and writes it into `config.json`
+if it works. Nothing sensitive is printed.
 
-> 前提：客户端里登录过学习通。客户端**正在运行时**它的 Cookie 库会被独占锁住，
-> 关掉客户端再运行即可（或加 `--wait-close` 让它挂着等你关）。
+> The client must have been logged in, and it must be **closed** (Windows locks the database
+> while it runs). Or use `--wait-close` and close it afterwards.
 
-### 方法二：从浏览器自动读取（Chrome / Edge）
+### Method 2: from a browser (Chrome / Edge)
 
 ```bat
 python cxmon.py browser-cookie --browser edge
 ```
 
-⚠️ **Chrome / Edge 127 之后大概率会失败**：它们启用了 **App-Bound 加密**（密文前缀 `v20`），
-密钥绑定在浏览器程序本身，只有浏览器自己能解密 —— 关掉浏览器、复制数据库都没用。
-工具检测到这种情况会明确告诉你，不会假装"没找到"。
+⚠️ **This usually fails on Chrome/Edge 127+**: they use **App-Bound Encryption** (ciphertext
+prefix `v20`), whose key is bound to the browser binary — closing the browser or copying the
+database does not help. The tool detects this and says so instead of pretending it found nothing.
 
-（Firefox 或旧版浏览器通常没这个问题。）
+### Method 3: copy it manually from DevTools (always works)
 
-### 方法三：手动从 DevTools 复制（万能兜底，一定能成）
+1. Open the tab where you are logged in to XueXiTong
+2. Press `F12`, go to the **Network** tab, press `F5`
+3. Click the first request in the list
+4. Open **Headers** → scroll to **Request Headers**
+5. Find the line starting with `cookie:` — triple-click it, `Ctrl+C`
+6. Run `python cxmon.py cookie` and paste
 
-浏览器自己会解密，我们让它把 Cookie 交出来：
+Shortcut: right-click the request → Copy → **Copy as cURL**, then paste the whole thing —
+the tool understands plain cookie strings, header blocks and cURL commands.
 
-1. 切到已登录学习通的标签页（停在 `i.chaoxing.com` 页面上）
-2. 按 `F12` 打开开发者工具
-3. 点顶部「**网络 / Network**」标签
-4. 按 `F5` 刷新，左边会出现一串请求
-5. 点最上面那一条（通常是 `i.chaoxing.com`）
-6. 右边点「**标头 / Headers**」，往下滚到「**请求标头 / Request Headers**」
-7. 找到以 `cookie:` 开头的那一行 → 三击选中 → `Ctrl+C`
-8. 运行 `python cxmon.py cookie`，粘贴，回车
+### When the login expires, you mostly don't have to do anything
 
-**更省事的第 5 步替代**：在请求上右键 → 复制 → **以 cURL 格式复制**，
-然后把整段 cURL 粘进来，工具一样能自动识别（纯 Cookie 串、整段请求头、cURL 三种格式都支持）。
+1. **Automatic repair**: on detecting an expired login, the monitor re-reads the login from the
+   XueXiTong PC client, verifies it against the API, writes it back and keeps going.
+   (Verified: a deliberately corrupted 34-character Cookie was replaced by a valid
+   1824-character one automatically and the scan continued — zero user action.)
+2. **If repair fails** (e.g. the client isn't logged in either), it tells you in plain language
+   via **speech + toast + WeChat**:
 
-粘贴后工具会立刻用它拉一次课程列表验证，并自动解析出 `uid` / `fid` 保存。
+   > Login expired. Open the XueXiTong PC client and log in once; the tool will pick up the new
+   > login within a few minutes and continue.
 
-> **安全提醒**：Cookie 等同于登录凭证。它只存在本机 `config.json`（已在 `.gitignore` 中排除），
-> **不要发给别人、不要提交到 git**。想作废它，去学习通重新登录一次即可。
-
----
-
-### 登录过期了怎么办（你基本不用管）
-
-Cookie 通常能活几周，过期后**工具会自己处理**，按下面的顺序来：
-
-1. **自动修复**：监控发现登录失效 → 自动去学习通 PC 客户端读新的登录信息 →
-   拿去请求学习通**真实验证** → 通过就写回配置 → 继续监控。
-   （实测：把配置里的 Cookie 换成 34 字符的垃圾值，启动监控后自动变成 1824 字符的有效值，
-   26 个班级照常扫描，用户零操作。）
-2. **修不好时它会告诉你**：如果客户端里也没有有效登录（比如你很久没开过学习通），
-   它会用**语音 + 右下角弹窗 + 微信**发一句人话：
-   > 登录已过期，请打开『学习通』电脑客户端登录一次，工具会在几分钟内自动获取新的登录信息并继续。
-
-   **监控进程不会退出**，每 5 分钟重试一次 —— 你登录完，它自己就恢复了。
-3. **想手动**：控制面板上的「更新 Cookie」按钮，或 `python cxmon.py browser-cookie`，
-   或最兜底的 DevTools 手动复制（上面方法三）。
+   The monitor **does not exit** — it retries every 5 minutes, so logging in fixes it by itself.
+3. **Manually**: the `Update Cookie` button in the panel, or `python cxmon.py browser-cookie`,
+   or method 3 above.
 
 ---
 
-## 4. 命令一览
+## 4. Commands
 
-| 命令 | 作用 |
+| Command | What it does |
 | --- | --- |
-| `python cxmon.py panel` | **打开图形控制面板**（双击 bat 走的就是这个） |
-| `python cxmon.py tray` | 只启动右下角托盘图标（关掉面板后它还在） |
-| `python cxmon.py monitor` | 命令行方式开始监控（`Ctrl+C` 停止；已有实例在跑会拒绝重复启动） |
-| `python cxmon.py monitor --once` | 只扫一轮就退出，用来快速确认配置对不对 |
-| `python cxmon.py monitor --dry-run` | 只打印命中结果，不出声不弹窗 |
-| `python cxmon.py monitor --mock` | 离线演示（不需要 Cookie，也不会联网） |
-| `python cxmon.py monitor --interval 15` | 临时改扫描间隔（秒） |
-| `python cxmon.py browser-cookie` | 自动从学习通客户端/浏览器读取 Cookie |
-| `python cxmon.py cookie` | 手动粘贴 Cookie（支持 Cookie 串 / 请求头 / cURL） |
-| `python cxmon.py courses` | 列出所有班级及 `courseId` / `classId` |
-| `python cxmon.py probe [--all] [--raw]` | 打印活动接口原始返回，**学习通改字段时用它排查** |
-| `python cxmon.py test-alert` | 单独测试提醒链路（语音 / 提示音 / 弹窗 / 推送） |
-| `python cxmon.py doctor [--speak]` | 环境自检 + 试听语音 |
-
-`probe` 的输出会明确标出每条活动**是否正在进行**、**会不会触发提醒**，例如：
-
-```
-· activeId=3000171777685 type=2 名称=位置签到 subType=4 [已结束/未开始] → 忽略（不在进行中）
-```
+| `python cxmon.py panel` | **Open the graphical control panel** (what the .bat does) |
+| `python cxmon.py tray` | Start only the tray icon |
+| `python cxmon.py monitor` | Start monitoring in the console (`Ctrl+C` to stop; refuses to run twice) |
+| `python cxmon.py monitor --once` | Scan once and exit |
+| `python cxmon.py monitor --dry-run` | Print hits but make no sound / toast / push |
+| `python cxmon.py monitor --mock` | Offline demo, no Cookie and no network needed |
+| `python cxmon.py monitor --interval 15` | Override the scan interval (seconds) |
+| `python cxmon.py browser-cookie` | Auto-read the Cookie from the PC client / browser |
+| `python cxmon.py cookie` | Paste a Cookie manually (string, header block or cURL) |
+| `python cxmon.py courses` | List every class with its `courseId` / `classId` |
+| `python cxmon.py probe [--all] [--raw]` | Dump the raw activity API response — use this when the platform changes fields |
+| `python cxmon.py test-alert` | Exercise the alert path (voice / beep / toast / push) |
+| `python cxmon.py doctor [--speak]` | Self-check the environment and play a sample sentence |
 
 ---
 
-## 5. 配置说明（`config.json`）
+## 5. Configuration (`config.json`)
 
-完整模板见 [`config.example.json`](config.example.json)。最常改的：
+See [`config.example.json`](config.example.json) for the full template. The settings you are
+most likely to change:
 
-| 配置项 | 当前值 | 说明 |
+| Key | Default | Meaning |
 | --- | --- | --- |
-| `poll_interval` | `10.0` | 扫描间隔秒数。签到一般挂 1～3 分钟，**10 秒足够快**，别低于 5 |
-| `jitter` | `3.0` | 每轮随机延迟，让请求不那么机械 |
-| `targets` | `[]` | 留空=监控所有课；只盯几个班就填 `[{"courseId":"266294096","classId":"152515522","name":"操作系统"}]` |
-| `match.types` | `[2]` | 活动类型白名单（实测签到=2） |
-| `match.name_keywords` | `["签到","签退"]` | 名称关键词，与 `types` 是**或**关系 |
-| `alert.voice_text` | 见下 | 播报词，可用 `{course}` `{name}` `{activeId}` `{time}` |
-| `alert.repeat` / `repeat_interval` | `3` / `5.0` | 念几遍、每遍间隔几秒 |
-| `alert.realert_after` | `0` | `>0` 时，签到还挂着就每隔这么久再提醒一次；`0`=只提醒一次 |
-| `alert.open_url` | `false` | 是否自动打开签到页（你在手机签，所以关着） |
-| `alert.webhook` | 空 | 手机推送地址，见下 |
+| `poll_interval` | `10.0` | Seconds between scans. Sign-ins last 1–3 minutes, so 10s is plenty; don't go below 5 |
+| `jitter` | `3.0` | Random extra delay per round, so requests don't look mechanical |
+| `scan_workers` | `6` | Concurrent scan threads (serial 26-class scans took ~3s; concurrent is ~0.5s) |
+| `targets` | `[]` | Empty = all courses; or e.g. `[{"courseId":"...","classId":"...","name":"Math"}]` |
+| `match.types` | `[2]` | Activity types to alert on (sign-in = 2) |
+| `match.name_keywords` | `["签到","签退"]` | Name keywords, OR-ed with `types` |
+| `alert.voice_text` | see template | Spoken text; placeholders `{course}` `{name}` `{activeId}` `{time}` |
+| `alert.repeat` / `repeat_interval` | `3` / `5.0` | How many times to speak, and the gap |
+| `alert.realert_after` | `0` | `>0`: re-alert every N seconds while the sign-in is still open |
+| `alert.beep` / `toast` | `true` | Beep and Windows toast |
+| `alert.open_url` | `false` | Open the sign-in page in your browser (off by default: you sign on your phone) |
+| `alert.webhook` | empty | Phone push URL (see section 6) |
 
-`types` 和 `name_keywords` 都留空时，退化为"名字里带『签』字就提醒"。
-不确定学习通有没有改字段，就跑 `python cxmon.py probe --all --raw` 看真实数据。
-
----
-
-## 6. 手机推送（人不在电脑前时很有用）
-
-签到窗口常常只有 1～3 分钟，人不在电脑前语音没用：
-
-- **微信（Server酱）**：<https://sctapi.ftqq.com> 用 GitHub 登录拿 SendKey，
-  把 `alert.webhook` 填成 `https://sctapi.ftqq.com/<你的SendKey>.send`
-- **钉钉机器人**：群设置 → 智能群助手 → 添加机器人 → 自定义 → 复制 Webhook 地址
-- **企业微信群机器人**：群设置 → 群机器人 → 添加 → 复制 Webhook 地址
-
-填好后用 `python cxmon.py test-alert` 验证能否收到。
+If both `types` and `name_keywords` are empty, it falls back to "alert if the name contains 签".
+If you suspect the platform changed its fields, run `python cxmon.py probe --all --raw`.
 
 ---
 
-## 7. 验证记录（哪些是真的测过的）
+## 6. Phone push
 
-在这台机器上实测通过的：
+A sign-in window is often only 1–3 minutes, so if you are away from your PC, speech is useless.
+Pick one:
 
-| 验证项 | 结果 |
+- **WeChat via Server酱 Turbo**: get a SendKey at <https://sct.ftqq.com/>, then set
+  `alert.webhook` to `https://sctapi.ftqq.com/<SendKey>.send`.
+  (Note: Server酱³ at `sc3.ft07.com` pushes to its *own* client app, not WeChat — it is not
+  suitable for a 1-minute window.)
+- **DingTalk bot**: group settings → Smart group assistant → Add robot → Custom → copy the Webhook URL.
+- **WeCom (企业微信) group bot**: group settings → Group robots → Add → copy the Webhook URL.
+
+Then verify with `python cxmon.py test-alert`. A wrong key is reported explicitly
+(e.g. DingTalk's `token is not exist`), never silently "successful".
+
+---
+
+## 7. What has actually been verified
+
+| Item | Result |
 | --- | --- |
-| Cookie 获取（学习通 PC 客户端自动解密） | ✅ 解出 19 个字段，`_uid`/`fid`/`vc3`/`_d` 齐全 |
-| AES-256-GCM 解密实现（纯 ctypes 调 Windows CNG） | ✅ 用 **NIST 标准测试向量**验过（AES-128 与 AES-256 两条） |
-| Cookie 真实有效性 | ✅ 拉到 **26 个真实班级**，课程名正确 |
-| 活动列表接口 | ✅ 26 个班 148 条真实记录全部解析成功 |
-| 历史活动过滤 | ✅ 148 条历史记录**零误报**（单轮扫描命中 0 次、错误 0 次） |
-| 签到识别规则 | ✅ 9 条决策用例全通过（含"name 为空的签到"、"随堂练习不报"、"未开始不报"） |
-| `otherId` 误用回归测试 | ✅ 两条位置签到拿到不同 ID，不会互相顶掉 |
-| 语音提醒 | ✅ 两条路径都验过（常驻 TTS 进程 + 一次性降级），发音人 `Microsoft Huihui Desktop (zh-CN)` |
-| 微信推送（Server酱 Turbo） | ✅ 真实推送成功（服务端 `code=0 / SUCCESS`）；模拟真实签到时「检测 → 推送」耗时 **1 秒** |
-| 推送通道错误识别 | ✅ 假 key 全部如实报错（钉钉 `token is not exist`、企业微信 `invalid webhook url`、Server酱 HTTP 403），不会假报成功 |
-| 真实字段形状的完整链路 | ✅ 注入一条"进行中的位置签到" → 识别 → 横幅 → 语音播报 |
-| 去重与状态持久化 | ✅ 同一签到不重复报，重启后也不重报 |
-| 失败路径 | ✅ Cookie 失效 / 未配置 / App-Bound 加密 / 库被占用，都有明确中文提示 |
-| **实战（首次真实签到）** | ✅ 一场真实的位置签到（窗口 4 分钟）：发起后 **15 秒检测到** → 语音播报 + 右下角弹窗即时触发 → 微信推送到达。确认「语音和微信都收到了，第一分钟就提醒到了」 |
+| Cookie extraction from the PC client | ✅ 19 fields, including `_uid` / `fid` / `vc3` / `_d` |
+| AES-256-GCM decryption (pure ctypes → Windows CNG) | ✅ Validated against **NIST test vectors** (AES-128 and AES-256) |
+| Cookie validity | ✅ Fetched a real account's 26 classes |
+| Activity API | ✅ 148 real records parsed |
+| History filtering | ✅ Zero false positives from those 148 historical records |
+| Sign-in matching rules | ✅ 9 decision cases pass (including "empty `name`", "quiz must not alert", "not started yet must not alert") |
+| `otherId` misuse regression test | ✅ Two location sign-ins get distinct ids |
+| Voice | ✅ Both paths tested (resident TTS worker and one-shot fallback), voice `Microsoft Huihui Desktop (zh-CN)` |
+| WeChat push | ✅ Real push (server returned `code=0 / SUCCESS`); detection → push took **1 second** |
+| Push error reporting | ✅ Bad keys are reported (DingTalk / WeCom / Server酱), never faked as success |
+| De-duplication and state | ✅ The same sign-in is never alerted twice, even across restarts |
+| Failure paths | ✅ Expired Cookie / unconfigured / App-Bound encryption / locked database all give clear messages |
+| **Real sign-in** | ✅ A real location sign-in (4-minute window): detected **15 seconds** after it was created → speech + toast immediately → WeChat push delivered. User confirmed both arrived "within the first minute" |
 
-过程中修掉的三个真 bug（都已加测试）：
+Bugs found and fixed along the way (all now covered by checks):
 
-1. `self._speaker` 属性覆盖同名方法 → 报警时抛异常，提醒完全发不出去
-2. `otherId` 被当成活动 ID → 所有位置签到共用 key，第一次之后就**静默失效**
-3. `name` 字段匹配 + 不过滤历史 → 既漏报（`name` 是空的）又会误报（几个月的旧签到）
-
----
-
-## 8. 常见问题
-
-**Q：Cookie 过期了怎么办？**
-工具会明确报「Cookie 已失效」并停下（不会静默失败）。重新跑
-`python cxmon.py browser-cookie` 即可（客户端登录状态还在的话一步搞定）。
-
-**Q：扫描间隔设多少合适？**
-默认 10 秒。签到挂 1～3 分钟，10 秒完全够；调更快只会增加请求量，不会更早发现。
-
-**Q：会漏吗？**
-会。断网、电脑睡眠、程序没开、签到窗口极短，都会漏。
-建议配 `alert.webhook` 手机推送做双保险，并把电脑电源计划改成"不睡眠"。
-
-**Q：没听到声音？**
-先 `python cxmon.py doctor --speak`。还不行就检查系统音量、默认播放设备、
-以及"声音设置"里给 PowerShell 的权限。也可以用 `alert.voice_name` 换发音人（`doctor` 会列出全部）。
-
-**Q：课程名太长，语音念得很啰嗦？**
-改 `alert.voice_text`，例如：
-`"注意，新签到！{name}，请打开学习通"`（去掉 `{course}` 或自行缩短）。
-
-**Q：会不会被学习通发现？**
-工具只发只读查询，频率约 2.6 次/秒、和正常刷 App 一个量级，属于低风险。
-但任何第三方工具都有被判定为异常客户端的可能，风险请自行评估，不建议把间隔调得更小。
-
-**Q：同时开两个监控会怎样？**
-会对同一场签到各报一次（两个语音）。所以要么用后台这个，要么自己双击 bat，别同时开。
+1. An attribute shadowed a method (`self._speaker`) → the alert raised an exception and **no
+   alert was ever delivered**.
+2. `otherId` was used as the activity id → all location sign-ins shared one key and the tool
+   **went silently dead** after the first one.
+3. Matching on `name` and not filtering history → both **missed** sign-ins (`name` is empty)
+   and **false-alarmed** on months-old ones.
+4. Four separate missing imports (`time`, `os`, `sys`, `time`) — static checking (`pyflakes`)
+   is now part of the workflow.
 
 ---
 
-## 9. 开机自启（可选）
+## 8. FAQ
 
-1. `Win+R` → `taskschd.msc` → 创建任务
-2. 常规：勾选「不管用户是否登录都要运行」或「只在用户登录时运行」
-3. 触发器：登录时
-4. 操作 → 程序：`python`；参数：`cxmon.py monitor`；起始于：本目录完整路径
+**How often does it check?** Every 8–10 seconds by default; a round takes ~0.5s. Detection
+latency is therefore about 10 seconds worst case. Measurements show the platform itself needs
+a few seconds to publish a new sign-in, so polling faster would not help.
 
-或更简单：`Win+R` → `shell:startup`，把 `启动监控.bat` 的快捷方式丢进去。
+**Can it miss one?** Yes — if you are offline, the PC sleeps, the program isn't running, or the
+window is extremely short. Configure `alert.webhook` as a second channel and disable sleep.
+
+**No sound?** Run `python cxmon.py doctor --speak`. Check the volume, the default output device,
+and the permission Windows gives PowerShell. `alert.voice_name` can pick another voice
+(`doctor` lists them).
+
+**The course name is too long for speech?** Edit `alert.voice_text`, e.g.
+`"Notice, new sign-in, please open XueXiTong"`.
+
+**Will the platform notice?** The tool only issues read-only requests, roughly 3 per second at
+the default interval — comparable to a normal app refresh. Any third-party tool carries some
+risk of being flagged as an abnormal client; keep the interval at the default.
+
+**Two monitors at once?** The second one refuses to start (otherwise one sign-in would be
+announced twice).
 
 ---
 
-## 10. 目录结构
+## 9. Start automatically at logon (optional)
+
+1. `Win+R` → `taskschd.msc` → Create Task
+2. Triggers: At log on
+3. Actions → Program: `python`; Arguments: `cxmon.py monitor`; Start in: this folder
+
+Or simpler: `Win+R` → `shell:startup` and drop a shortcut to `启动监控.bat` there.
+
+---
+
+## 10. Layout
 
 ```
-chaoxing-monitor/
-├─ cxmon.py                 入口
-├─ 启动监控.bat             双击 = 打开控制面板
-├─ config.json              你的实际配置（含 Cookie，勿外传）
-├─ config.example.json      配置模板
-├─ state.json               已提醒过的签到（去重用）
-├─ monitor.pid              正在运行的监控进程号（防止重复启动）
-├─ monitor.log              运行日志
+cxmon/
+├─ cxmon.py                 entry point
+├─ 启动监控.bat              double-click = open the control panel
+├─ config.json              your settings (contains your Cookie — never share)
+├─ config.example.json      template
+├─ state.json               alerted sign-ins (de-duplication)
+├─ monitor.log              run log
+├─ app-icon.ico             desktop / tray icon
 └─ cxmon/
-   ├─ config.py             配置加载/合并
-   ├─ chaoxing.py           接口客户端 + 签到解析 + 离线 Mock
-   ├─ browser_cookie.py     从学习通客户端/浏览器读 Cookie（DPAPI + AES-GCM 纯 ctypes 实现）
-   ├─ notifier.py           语音/提示音/气泡/Webhook/打开页面
-   ├─ monitor.py            监控主循环、进行中过滤、去重、提醒调度
-   ├─ panel.py              图形控制面板（tkinter）
-   ├─ runtime.py            进程 PID 管理与存活判断
-   ├─ cli.py                命令行
-   ├─ voice_worker.ps1      常驻 TTS 进程
-   └─ toast.ps1             气泡通知
+   ├─ config.py             config loading / merging
+   ├─ chaoxing.py           API client, activity parsing, offline mock
+   ├─ browser_cookie.py     Cookie extraction (DPAPI + AES-GCM via pure ctypes)
+   ├─ notifier.py           speech / beep / toast / webhook / open URL
+   ├─ monitor.py            main loop, ongoing filter, de-duplication, alert scheduling
+   ├─ panel.py              Tk control panel
+   ├─ tray.py               tray icon (pure ctypes Shell_NotifyIcon)
+   ├─ runtime.py            PID files, liveness, single-instance mutex
+   ├─ cli.py                command line
+   ├─ voice_worker.ps1      resident TTS worker
+   └─ toast.ps1             balloon notification
 ```
 
 ---
 
-## 11. 维护须知（用血换来的几条规矩）
+## 11. Maintenance notes (lessons paid for in blood)
 
-改这个项目之前请先看这一节，否则很容易踩同样的坑：
+Read this before changing anything:
 
-1. **`.bat` 和 `.ps1` 文件里不能有非 ASCII 字符。**
-   cmd.exe 按系统 ANSI 码页读 .bat，Windows PowerShell 5.1 也按 ANSI 码页读 .ps1。
-   UTF-8 中文会被误解析：轻则乱码，重则**把引号当成 GBK 尾字节吞掉** → 语法错误。
-   实测后果：bat 里 `errorlevel` 被吃成 `orlevel`（双击桌面图标毫无反应）；
-   toast.ps1 里 `"学习通签到提醒"` 的收尾引号被吞（气泡通知一直失败，退出码 1）。
-   中文一律由 Python 传参进去，脚本本身保持纯 ASCII。
+1. **`.bat` and `.ps1` files must stay ASCII-only.**
+   `cmd.exe` reads `.bat` using the system ANSI codepage, and Windows PowerShell 5.1 does the
+   same for `.ps1`. UTF-8 Chinese gets mis-parsed: at best mojibake, at worst a quote byte is
+   swallowed as a GBK trail byte and the script fails with a syntax error.
+   Observed consequences: `errorlevel` became `orlevel` (double-clicking the launcher did
+   nothing at all), and a Chinese string literal in `toast.ps1` broke the balloon channel
+   (exit code 1) for as long as it existed. Pass Chinese in from Python as arguments instead.
 
-2. **改完必须跑静态检查**，不能只看"编译通过"：
+2. **After every change, run the static check** — "it compiles" is not enough:
    ```bat
-   python -m pip install pyflakes      :: 仅开发用，工具本身零依赖
-   python -m pyflakes cxmon cxmon.py   :: 必须 0 问题
+   python -m pip install pyflakes      :: development only; the tool itself stays dependency-free
+   python -m pyflakes cxmon cxmon.py   :: must report 0 issues
    ```
-   `NameError`（漏 import）编译期查不出来。今天连着踩了 4 次：
-   `time`、`os`、`sys`、`time` —— 其中 `sys` 那次会让"托盘自愈"一执行就崩。
+   `NameError` (a missing import) is invisible at compile time; four of them were hit in one day,
+   one of which would have made tray self-healing crash the moment it was needed.
 
-3. **不要做"隐藏窗口 + 定时叫回来"的设计。**
-   试过一版：关窗口时隐藏、托盘再把它叫回来。结果隐藏窗口和模态对话框互相打架，
-   日志里出现"叫回来 4 秒后又被隐藏"的循环。现在的做法是：
-   **关窗口 = 进程退出**，托盘负责留在右下角，需要时重新开一个面板。
+3. **Don't build hidden-window designs.** An earlier version hid the window on close and had the
+   tray restore it; the hidden window fought with the modal dialog, and the log showed the window
+   being re-hidden four seconds after each restore. Closing the window now simply exits the panel
+   process, and the tray is the persistent entry point.
 
-4. **单实例不要用"查找窗口"判断**，会有竞态（第二个实例在第一个还没画出窗口时误判）。
-   用**命名互斥体**（`runtime.acquire_single_instance`）：无竞态，进程退出/崩溃自动释放。
+4. **Don't implement single-instance by looking for a window** — it races (the second instance
+   starts before the first has drawn its window, so you get two). Use a **named mutex**
+   (`runtime.acquire_single_instance`): race-free, released automatically even on a crash.
 
-5. **别信"它不会出问题"。** 托盘会意外消失、进程会被杀、Cookie 会过期——
-   每个这样的地方都要有兜底：托盘有 30 秒自愈，Cookie 失效有明确提示，重复启动有拒绝提示。
+5. **Assume things will break.** The tray icon does vanish, processes do get killed, Cookies do
+   expire. Everything fragile needs a fallback: the tray self-heals in 30 seconds, an expired
+   login is repaired automatically or explained in plain language, and a duplicate start is refused.
 
 ---
 
-## 12. 免责声明
+## 12. License
 
-本工具仅用于**提醒你自己**及时完成课堂签到，不代替你签到、不伪造签到记录、
-不修改任何学习通数据。请遵守所在学校的规定与学习通用户协议；使用本工具产生的一切后果由使用者自负。
+MIT — see [LICENSE](LICENSE).
+
+---
+
+## 13. Disclaimer
+
+This tool exists to **remind you** to complete your own class sign-in. It does not sign in for you,
+does not forge attendance records and does not modify any XueXiTong data. Follow your school's rules
+and the platform's terms of service; you are responsible for any consequences of using this tool.
