@@ -42,7 +42,45 @@ there is nothing to `pip install`).
 
 ---
 
+## Don't want to install Python? Grab the exe
+
+Download `cxmon-windows-x64.zip` from this repository's
+**[Releases](../../releases)** page, unzip it and double-click `cxmon.exe` —
+**no Python, no configuration, nothing to install**.
+
+You only need to supply your XueXiTong login once (either sign in to the XueXiTong
+Windows client, or sign in at <https://i.chaoxing.com> in Edge/Chrome), then click
+"更新 Cookie" in the window. See `使用说明.txt` inside the zip.
+
+Day to day it's two clicks: **double-click → "开始监控" before class, "停止监控" after.**
+
+> Why Releases and not the repo? The bundle is tens of MB. Committing it would slow
+> down every `git clone` forever, and you can't remove it from history later.
+> Releases is what that page is for.
+
+**Security**: this bundle was scanned by 65 antivirus engines — **0 detections**
+(including Chinese engines such as Alibaba and Antiy):
+
+<https://www.virustotal.com/gui/file/d7f0805792ec6a26b17ca1bbdf88df88042da3946afdf7bf8ba9662a2802923a>
+
+> The hash on VirusTotal is the **zip**'s hash, not `cxmon.exe`'s (the exe's SHA256 is
+> on the release page and in `SHA256.txt` inside the zip). VirusTotal unpacks and scans
+> the exe inside, so the result applies to it too.
+
+> ⚠️ **The exe is not code-signed** — a code signing certificate costs upwards of
+> US$150/year plus identity verification, which isn't worth it for a free tool. Because
+> a bundled exe contains a Python interpreter, **an individual local antivirus may still
+> flag it**: local engines apply different heuristics than VirusTotal's. If it gets
+> blocked, whitelist the folder. If you're not comfortable, don't use it.
+
+To rebuild it yourself after changing the code, double-click `打包exe.bat`.
+
+---
+
 ## 0. Quick start (about 5 minutes)
+
+(The steps below are for running from source — for people who want to change the code.
+Everyone else should just use the exe above.)
 
 ```bat
 :: 1) Check your environment and hear a sample of the voice
