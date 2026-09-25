@@ -53,15 +53,10 @@ if exist build rmdir /s /q build
 if exist dist  rmdir /s /q dist
 
 echo [2/3] Running PyInstaller (about 30-60 seconds) ...
-rem Folder mode, NOT onefile: onefile starts slower and gets flagged
-rem by antivirus far more often.
-%PY% -m PyInstaller --noconfirm --clean --noconsole ^
-    --name cxmon --icon app-icon.ico ^
-    --add-data "app-icon.ico;." ^
-    --add-data "cxmon\toast.ps1;." ^
-    --add-data "cxmon\voice_worker.ps1;." ^
-    --hidden-import tkinter --hidden-import tkinter.ttk --hidden-import tkinter.messagebox ^
-    launcher.py
+rem All build settings live in cxmon.spec (icon, bundled files, version info,
+rem upx=False, console=False). Do NOT pass them here as CLI flags: that
+rem regenerates the spec and the two copies drift apart.
+%PY% -m PyInstaller --noconfirm --clean cxmon.spec
 if errorlevel 1 (
     echo.
     echo   [ERROR] PyInstaller failed. See the messages above.

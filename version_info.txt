@@ -1,0 +1,62 @@
+# -*- mode: python ; coding: utf-8 -*-
+# exe 的版本信息（文件名、产品名等），写进 Windows 的文件属性里。
+#
+# 为什么值得写：未签名的 exe 本来就可疑，而"没有任何来源信息 + 自解压释放
+# 一个 Python 解释器"恰好是杀毒软件启发式规则最讨厌的特征组合。
+# 补上来源信息不能根治误报，但能让它看起来像个正经软件，降低被拦的概率。
+#
+# 同时写中英文两张表：Windows 会按系统语言挑一张显示，只写一张的话
+# 在别的语言环境下属性页会是空的。
+#
+# 版本号改动时，这里和 cxmon/__init__.py 的 __version__ 要一起改。
+
+VSVersionInfo(
+    ffi=FixedFileInfo(
+        filevers=(1, 0, 0, 0),
+        prodvers=(1, 0, 0, 0),
+        mask=0x3F,
+        flags=0x0,
+        OS=0x40004,
+        fileType=0x1,
+        subtype=0x0,
+        date=(0, 0),
+    ),
+    kids=[
+        StringFileInfo(
+            [
+                # 0804 = 简体中文, 04B0 = Unicode
+                StringTable(
+                    "080404B0",
+                    [
+                        StringStruct("CompanyName", "byteMa0924"),
+                        StringStruct("FileDescription", "学习通签到监控（只提醒，不代签）"),
+                        StringStruct("FileVersion", "1.0.0.0"),
+                        StringStruct("InternalName", "cxmon"),
+                        StringStruct("LegalCopyright", "MIT License"),
+                        StringStruct("OriginalFilename", "cxmon.exe"),
+                        StringStruct("ProductName", "学习通签到监控 (cxmon)"),
+                        StringStruct("ProductVersion", "1.0.0.0"),
+                        StringStruct("Comments", "https://github.com/byteMa0924/xuexitong-qiandao"),
+                    ],
+                ),
+                # 0409 = 英文, 04B0 = Unicode
+                StringTable(
+                    "040904B0",
+                    [
+                        StringStruct("CompanyName", "byteMa0924"),
+                        StringStruct("FileDescription",
+                                     "Chaoxing sign-in monitor (notify only, never signs in for you)"),
+                        StringStruct("FileVersion", "1.0.0.0"),
+                        StringStruct("InternalName", "cxmon"),
+                        StringStruct("LegalCopyright", "MIT License"),
+                        StringStruct("OriginalFilename", "cxmon.exe"),
+                        StringStruct("ProductName", "cxmon - Chaoxing sign-in monitor"),
+                        StringStruct("ProductVersion", "1.0.0.0"),
+                        StringStruct("Comments", "https://github.com/byteMa0924/xuexitong-qiandao"),
+                    ],
+                ),
+            ]
+        ),
+        VarFileInfo([VarStruct("Translation", [0x0804, 1200, 0x0409, 1200])]),
+    ],
+)
