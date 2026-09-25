@@ -25,10 +25,10 @@ from ctypes import wintypes as w
 from pathlib import Path
 
 from . import runtime
+from .paths import default_icon, self_command, subprocess_cwd
 
 log = logging.getLogger("cxmon.tray")
 
-ENTRY = Path(__file__).resolve().parent.parent / "cxmon.py"
 _CREATE_NO_WINDOW = 0x08000000 if os.name == "nt" else 0
 
 user32 = ctypes.windll.user32
@@ -199,7 +199,7 @@ class TrayIcon:
 
     def __init__(self, cfg: dict, icon_path: Path | None = None):
         self.cfg = cfg
-        self.icon_path = icon_path or (Path(__file__).resolve().parent.parent / "app-icon.ico")
+        self.icon_path = icon_path or default_icon()
         self.actions: queue.Queue[str] = queue.Queue()
         self.hwnd = None
         self.hicon = None
@@ -339,7 +339,7 @@ def _start_panel(cfg: dict) -> None:
     if focus_window_by_title():
         log.info("面板窗口已存在，已把它提到最前面")
         return
-    subprocess.Popen([sys.executable, str(ENTRY), "panel"], cwd=str(ENTRY.parent),
+    subprocess.Popen(self_command("panel"), cwd=subprocess_cwd(),
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                      creationflags=_CREATE_NO_WINDOW)
 
@@ -347,7 +347,7 @@ def _start_panel(cfg: dict) -> None:
 def _start_monitor(cfg: dict) -> None:
     if runtime.read_pid(cfg):
         return
-    subprocess.Popen([sys.executable, str(ENTRY), "monitor"], cwd=str(ENTRY.parent),
+    subprocess.Popen(self_command("monitor"), cwd=subprocess_cwd(),
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                      creationflags=_CREATE_NO_WINDOW)
     log.info("已按托盘菜单开始监控")

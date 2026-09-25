@@ -394,6 +394,8 @@ def cmd_panel(args, cfg: dict) -> int:
 def cmd_test_alert(args, cfg: dict) -> int:
     """不联网，只把整条提醒链路走一遍。"""
     alert = cfg["alert"]
+    if getattr(args, "network", False):
+        return cmd_test_network_alert(args, cfg)
     activity = {
         "activeId": "test-0001",
         "name": args.name,
@@ -430,6 +432,36 @@ def cmd_test_alert(args, cfg: dict) -> int:
         notifier.open_in_browser(build_sign_url(alert.get("sign_url_template") or "", activity))
     print("测试完成。如果没听到声音，检查系统音量和默认播放设备，或运行 doctor --speak。")
     return 0
+
+
+def cmd_test_network_alert(args, cfg: dict) -> int:
+    """只发一条「网络异常」示例推送，用来验证断网提醒能不能到你手机。
+
+    断网提醒是"平时看不见、出事了才知道有没有用"的东西，
+    所以必须能单独测一次，否则真断网时才发现配错了。
+    """
+    alert = cfg["alert"]
+    net = cfg.get("network") or {}
+    webhook = alert.get("webhook") or ""
+    shown = webhook if len(webhook) <= 44 else webhook[:44] + "…"
+    print("=" * 62)
+    print("  网络异常提醒 测试")
+    print(f"  推送地址：{shown or '（没配 alert.webhook）'}")
+    print("=" * 62)
+    if not webhook:
+        print("没有配置 alert.webhook，无法推送。见 README 第 6 节。")
+        return 1
+    if getattr(args, "dry_run", False):
+        print("--dry-run：不实际推送")
+        return 0
+    ok = notifier.send_webhook(
+        webhook,
+        "【学习通监控】⚠️ 网络断了，已看不见签到（测试）",
+        "这是一条测试：真断网时你会收到同样的提醒。\n"
+        f"触发条件：连续 {net.get('down_rounds', 3)} 轮所有班级都连不上学习通。\n"
+        "收到就说明断网提醒的链路是通的。")
+    print("已发送，去手机上看看。" if ok else "推送失败，看上面的错误信息或日志。")
+    return 0 if ok else 1
 
 
 # --------------------------------------------------------------------- 入口
@@ -502,6 +534,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--name", default="签到", help="测试用的活动名")
     p.add_argument("--repeat", type=int, default=1, help="朗读几遍")
     p.add_argument("--dry-run", action="store_true", help="只显示将要播报的文本")
+    p.add_argument("--network", action="store_true",
+                   help="改为发一条「网络异常」示例推送（验证断网提醒能否收到）")
     p.set_defaults(func=cmd_test_alert)
     return parser
 

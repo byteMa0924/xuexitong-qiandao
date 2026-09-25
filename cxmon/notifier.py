@@ -17,11 +17,14 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+from .paths import resource
+
 log = logging.getLogger("cxmon.notify")
 
 _HERE = Path(__file__).resolve().parent
-VOICE_WORKER = _HERE / "voice_worker.ps1"
-TOAST_SCRIPT = _HERE / "toast.ps1"
+# 打包成 exe 后这两个 .ps1 被解包到 _MEIPASS，用 resource() 找才找得到
+VOICE_WORKER = resource("voice_worker.ps1")
+TOAST_SCRIPT = resource("toast.ps1")
 
 _CREATE_NO_WINDOW = 0x08000000 if os.name == "nt" else 0
 
@@ -254,7 +257,7 @@ def send_webhook(url: str, title: str, body: str, timeout: float = 8) -> bool:
                             result.get("message") or result.get("errmsg")
                             or result.get("error") or raw[:120])
                 return False
-        log.info("已推送手机通知")
+        log.info("已推送手机通知：%s", title)
         return True
     except (OSError, urllib.error.URLError, ValueError) as exc:
         log.warning("手机通知推送失败：%s", exc)

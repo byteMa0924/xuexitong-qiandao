@@ -17,3 +17,9 @@ panel.show
 __pycache__/
 *.pyc
 *.pyo
+
+# ---- 打包产物 ----
+# exe 不进仓库：它挂在 GitHub Releases 上（几十 MB 塞进仓库会让每次 clone 都变慢）。
+# cxmon.spec 要提交 —— 它是构建配方，别人靠它复现同样的 exe。
+build/
+dist/

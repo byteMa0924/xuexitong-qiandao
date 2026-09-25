@@ -15,17 +15,18 @@ from datetime import datetime
 from pathlib import Path
 
 from . import notifier, runtime
+from .paths import self_command, subprocess_cwd
 from .chaoxing import (
     ChaoxingClient,
     ChaoxingError,
     CookieExpired,
     MockTransport,
+    NetworkError,
     build_sign_url,
 )
 
 log = logging.getLogger("cxmon.monitor")
 
-ENTRY = Path(__file__).resolve().parent.parent / "cxmon.py"
 _CREATE_NO_WINDOW = 0x08000000 if os.name == "nt" else 0
 STATE_TTL = 24 * 3600  # 状态文件里超过 24 小时的记录直接清理
 TRAY_CHECK_INTERVAL = 30  # 每隔多久确认一次托盘图标还在（它是"监控在跑"的落脚点）
@@ -154,7 +155,15 @@ class Monitor:
         self._speaker_lock = threading.Lock()
         self._alert_slots = threading.Semaphore(2)   # 同时最多两路提醒
         self._opened: set[str] = set()
-        self._stats = {"scans": 0, "hits": 0, "errors": 0}
+        self._stats = {"scans": 0, "hits": 0, "errors": 0,
+                       "net_errors": 0, "round_ok": 0, "round_net_fail": 0,
+                       "last_net_error": ""}
+
+        # ---- 网络健康状态：断网是"静默失效"，必须主动告诉你 ----
+        self.net_cfg = cfg.get("network") or {}
+        self._net_state: str | None = None   # None=正常 / "flaky"=不稳 / "down"=全断
+        self._net_down_rounds = 0            # 连续"全军覆没"的轮数
+        self._net_flaky_rounds = 0           # 连续"部分失败"的轮数
 
     # --------------------------------------------------------------- 状态文件
 
@@ -198,7 +207,7 @@ class Monitor:
             return
 
         try:
-            courses = self.client.get_courses()
+            courses = self._get_courses_with_retry()
         except CookieExpired as exc:
             # 启动时就失效：先试自动修复，修不好才报错退出
             if self._try_refresh_cookie():
@@ -209,6 +218,16 @@ class Monitor:
                     f"登录信息失效，且无法自动获取新的：{exc}\n"
                     "请打开『学习通』电脑客户端登录一次，然后重新开始监控；\n"
                     "或者在控制面板上点「更新 Cookie」。")
+        except NetworkError as exc:
+            # 起不来是静默失效里最危险的一种：你以为它在盯，其实它没启动
+            log.error("拉取课程列表失败（网络不通）：%s", exc)
+            if not self.targets:
+                self._notify_startup_failure(exc)
+                raise SystemExit(
+                    f"连不上学习通，无法开始监控：{exc}\n"
+                    "已重试 %s 次。请检查网络后重新点「开始监控」。" %
+                    (self.net_cfg.get("startup_retries") or 1))
+            return
         except ChaoxingError as exc:
             log.error("拉取课程列表失败：%s", exc)
             if not self.targets:
@@ -304,6 +323,8 @@ class Monitor:
         targets = list(self.targets)
         workers = max(1, min(int(self.cfg.get("scan_workers") or 6), len(targets) or 1))
         expired: CookieExpired | None = None
+        ok = 0
+        net_fail = 0
 
         with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="cxmon-scan") as pool:
             futures = {pool.submit(self._fetch, t): t for t in targets}
@@ -315,6 +336,14 @@ class Monitor:
                 except CookieExpired as exc:
                     expired = exc
                     continue
+                except NetworkError as exc:
+                    # 连不上：单独计数，用来判断"是网络瞎了"还是"只是接口变了"
+                    self._stats["errors"] += 1
+                    self._stats["net_errors"] += 1
+                    self._stats["last_net_error"] = str(exc)
+                    net_fail += 1
+                    log.warning("[%s] 连不上学习通：%s", label, exc)
+                    continue
                 except ChaoxingError as exc:
                     self._stats["errors"] += 1
                     log.warning("[%s] 拉取活动列表失败：%s", label, exc)
@@ -324,6 +353,7 @@ class Monitor:
                     log.warning("[%s] 扫描异常：%s", label, exc)
                     continue
 
+                ok += 1
                 for activity in activities:
                     if not is_ongoing(activity):
                         continue          # 历史活动（接口会返回几个月前的），不提醒
@@ -348,6 +378,10 @@ class Monitor:
                         activity["_realert"] = True
                         found.append(activity)
 
+        # 记录本轮的网络健康度，供 _check_network_health 判断
+        self._stats["round_ok"] = ok
+        self._stats["round_net_fail"] = net_fail
+
         if expired is not None:
             self._stats["errors"] += 1
             if self._try_refresh_cookie():
@@ -361,6 +395,116 @@ class Monitor:
         """拉一个班的进行中活动（供线程池调用）。"""
         return self.client.get_active_list(
             target["courseId"], target["classId"], target.get("fid") or self.client.fid)
+
+    # ------------------------------------------------------------- 网络健康提示
+
+
+    def _push_net(self, title: str, body: str) -> None:
+        """推一条网络相关的手机通知（没配 webhook 或关掉提示时什么都不做）。"""
+        if self.dry_run or not self.net_cfg.get("notify", True):
+            return
+        webhook = self.alert_cfg.get("webhook") or ""
+        if not webhook:
+            return
+        try:
+            notifier.send_webhook(webhook, title, body)
+        except Exception as exc:                 # 告警本身失败绝不能拖垮监控
+            log.debug("网络告警推送失败：%s", exc)
+
+    def _check_network_health(self) -> None:
+        """每轮扫描后调用：断网/网络不稳时推手机，恢复时也推一条。
+
+        为什么必须推：断网时 26 个班每轮各报一条 warning，但心跳照样打
+        "暂无新签到"——从表面看你分不出"真没有签到"和"根本扫不到"。
+        没有这条提醒，你会在完全不知情的情况下漏掉整节课的签到。
+        """
+        if self.mock:
+            return
+        total = len(self.targets)
+        ok = int(self._stats.get("round_ok") or 0)
+        net_fail = int(self._stats.get("round_net_fail") or 0)
+        if total == 0 or (ok == 0 and net_fail == 0):
+            return                # 本轮没有网络类失败（可能是 Cookie 问题），不插手
+
+        down_rounds = max(1, int(self.net_cfg.get("down_rounds") or 3))
+        flaky_rounds = max(1, int(self.net_cfg.get("flaky_rounds") or 5))
+        detail = str(self._stats.get("last_net_error") or "")
+
+        if net_fail == 0:
+            # 完全正常
+            self._net_down_rounds = 0
+            self._net_flaky_rounds = 0
+            if self._net_state is not None:
+                log.warning("网络已恢复：本轮 %d/%d 个班级扫描成功", ok, total)
+                if self.net_cfg.get("recover_notify", True):
+                    self._push_net("【学习通监控】✅ 网络已恢复",
+                                   f"已能正常访问学习通（本轮 {ok}/{total} 个班级扫描成功），"
+                                   "签到监控继续工作。")
+                self._net_state = None
+            return
+
+        if ok == 0:
+            # 这一轮全军覆没
+            self._net_flaky_rounds = 0
+            self._net_down_rounds += 1
+            if self._net_down_rounds >= down_rounds and self._net_state != "down":
+                self._net_state = "down"
+                log.error("网络异常：连续 %d 轮 %d 个班级全部连不上",
+                          self._net_down_rounds, net_fail)
+                self._push_net(
+                    "【学习通监控】⚠️ 网络断了，已看不见签到",
+                    f"连续 {self._net_down_rounds} 轮都连不上学习通，"
+                    f"{total} 个班级一个都没扫到。\n"
+                    f"最后一条错误：{detail}\n"
+                    "这段时间内的签到不会被发现，请检查网络"
+                    "（电脑是否断网 / 睡眠 / Wi-Fi 掉了）。")
+            return
+
+        # 部分班级连不上：网络不稳，漏检风险升高
+        if self._net_state == "down":
+            return                # 从全断变成部分通 = 正在恢复，继续观察
+        self._net_down_rounds = 0
+        self._net_flaky_rounds += 1
+        if self._net_flaky_rounds >= flaky_rounds and self._net_state != "flaky":
+            self._net_state = "flaky"
+            log.warning("网络不稳定：连续 %d 轮有 %d 个班级连不上",
+                        self._net_flaky_rounds, net_fail)
+            self._push_net(
+                "【学习通监控】⚠️ 网络不稳定",
+                f"连续 {self._net_flaky_rounds} 轮有 {net_fail} 个班级连不上"
+                f"（本轮成功 {ok}/{total}），漏检风险变高。\n"
+                f"最后一条错误：{detail}")
+
+    # ------------------------------------------------------------- 启动时拉课程
+
+    def _get_courses_with_retry(self) -> list[dict]:
+        """拉课程列表；网络不通时先重试几次再放弃。
+
+        宿舍网早上刚连上、Wi-Fi 重连的那几秒经常失败，
+        而那恰好就是你出门前启动监控的时刻。
+        """
+        tries = max(1, int(self.net_cfg.get("startup_retries") or 1))
+        delay = float(self.net_cfg.get("startup_retry_delay") or 5.0)
+        last: NetworkError | None = None
+        for attempt in range(tries):
+            try:
+                return self.client.get_courses()
+            except NetworkError as exc:
+                last = exc
+                if attempt + 1 < tries:
+                    log.warning("连不上学习通（第 %d/%d 次），%.0f 秒后重试：%s",
+                                attempt + 1, tries, delay, exc)
+                    if self._stop.wait(delay):
+                        break
+        raise last if last is not None else NetworkError("连不上学习通")
+
+    def _notify_startup_failure(self, exc: Exception) -> None:
+        """启动时网络不通：推手机告诉你「它根本没在跑」。"""
+        self._push_net(
+            "【学习通监控】⚠️ 监控没能启动：网络不通",
+            "电脑连不上学习通，监控没有开始运行。\n"
+            f"原因：{exc}\n"
+            "现在没有任何东西在盯签到，请检查网络后重新点「开始监控」。")
 
     # ------------------------------------------------------------------ 提醒
 
@@ -465,8 +609,8 @@ class Monitor:
         try:
             if runtime.instance_running("tray"):
                 return
-            subprocess.Popen([sys.executable, str(ENTRY), "tray"],
-                             cwd=str(ENTRY.parent), stdout=subprocess.DEVNULL,
+            subprocess.Popen(self_command("tray"),
+                             cwd=subprocess_cwd(), stdout=subprocess.DEVNULL,
                              stderr=subprocess.DEVNULL, creationflags=_CREATE_NO_WINDOW)
             log.info("发现托盘图标不存在，已自动补上")
         except Exception as exc:                    # 补不上也不能影响监控
@@ -529,6 +673,9 @@ class Monitor:
                 for activity in found:
                     self.alert(activity)
 
+                # 网络健康检查：断网时"看起来正常"，必须主动推手机告诉你
+                self._check_network_health()
+
                 # 记录本轮耗时：检测延迟 = 轮询间隔 + 本轮耗时 + 服务端出现该签到的延迟。
                 # 有了这个数，才知道"晚了 18 秒"到底是我们的问题还是网络的问题。
                 self._stats["last_scan"] = time.monotonic() - cycle_start
@@ -555,10 +702,16 @@ class Monitor:
 
                 if not found and now >= scan_quiet_until:
                     scan_quiet_until = now + 60
-                    log.info("心跳：已扫描 %d 轮 / %d 个班级，最近一轮耗时 %.2f 秒，"
-                             "暂无新签到（累计命中 %d 次）",
-                             self._stats["scans"], len(self.targets),
-                             float(self._stats.get("last_scan") or 0), self._stats["hits"])
+                    if self._net_state == "down":
+                        # 断网时"暂无新签到"是骗人的，这里必须说实话
+                        log.warning("心跳：已扫描 %d 轮，但网络断了（%d 个班级全部连不上），"
+                                    "这段期间的签到不会被发现",
+                                    self._stats["scans"], len(self.targets))
+                    else:
+                        log.info("心跳：已扫描 %d 轮 / %d 个班级，最近一轮耗时 %.2f 秒，"
+                                 "暂无新签到（累计命中 %d 次）",
+                                 self._stats["scans"], len(self.targets),
+                                 float(self._stats.get("last_scan") or 0), self._stats["hits"])
 
                 # 周期校正：扫描耗时也算在间隔里，否则实际周期 = 间隔 + 扫描耗时
                 elapsed = time.monotonic() - cycle_start

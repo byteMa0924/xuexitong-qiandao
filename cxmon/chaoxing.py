@@ -40,6 +40,16 @@ class ChaoxingError(Exception):
     """接口调用失败（网络、返回格式等）。"""
 
 
+class NetworkError(ChaoxingError):
+    """连不上学习通：DNS 解析失败、连接超时、网络不可达等。
+
+    单独分出来是为了让上层能区分两种情况：
+      * NetworkError —— 网络断了，等一会儿可能会好，值得推手机提醒你；
+      * 其他 ChaoxingError —— 被拒绝 / 返回格式不对，等多久都没用。
+    不区分的话，断网只能靠翻日志发现，而断网时监控"看起来是正常的"。
+    """
+
+
 class CookieExpired(ChaoxingError):
     """Cookie 无效或已过期，需要重新获取。"""
 
@@ -118,22 +128,33 @@ class ChaoxingClient:
         return raw.decode("utf-8", "replace")
 
     def get(self, url: str) -> str:
-        """带重试的 GET，返回文本。"""
+        """带重试的 GET，返回文本。
+
+        连接层失败（DNS / 超时 / 不可达）抛 NetworkError，
+        其他失败抛 ChaoxingError —— 上层据此决定要不要提示"网络异常"。
+        """
         last = None
+        network = False
         for attempt in range(self.retries + 1):
             try:
                 if self._transport is not None:
                     return self._transport(url)
                 return self._default_get(url)
             except urllib.error.HTTPError as exc:
+                # HTTPError 是 URLError 的子类，必须排在它前面：
+                # 服务器有响应 = 网络其实是通的，不算网络故障
                 last = f"HTTP {exc.code}"
+                network = False
             except urllib.error.URLError as exc:
                 last = f"网络不可达 {exc.reason}"
+                network = True
             except OSError as exc:
                 last = f"网络错误 {exc}"
+                network = True
             if attempt < self.retries:
                 time.sleep(0.8 * (attempt + 1) + random.random() * 0.3)
-        raise ChaoxingError(f"请求失败 {url} （{last}）")
+        cls = NetworkError if network else ChaoxingError
+        raise cls(f"请求失败 {url} （{last}）")
 
     def get_json(self, url: str):
         text = self.get(url).strip()

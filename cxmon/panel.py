@@ -22,10 +22,10 @@ from pathlib import Path
 from tkinter import messagebox, ttk
 
 from . import runtime
+from .paths import self_command, subprocess_cwd
 
 log = logging.getLogger("cxmon.panel")
 
-ENTRY = Path(__file__).resolve().parent.parent / "cxmon.py"
 _CREATE_NO_WINDOW = 0x08000000 if os.name == "nt" else 0
 GREEN = "#1a7f37"
 GRAY = "#8a8a8a"
@@ -305,8 +305,8 @@ class Panel:
         problem = ""
         try:
             subprocess.Popen(
-                [sys.executable, str(ENTRY), "monitor"],
-                cwd=str(ENTRY.parent), stdout=subprocess.DEVNULL,
+                self_command("monitor"),
+                cwd=subprocess_cwd(), stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL, creationflags=_CREATE_NO_WINDOW,
             )
             # 等它写下 PID 文件（实测 0.26 秒），最多等 10 秒
@@ -355,8 +355,8 @@ class Panel:
 
     def test_alert(self) -> None:
         try:
-            subprocess.Popen([sys.executable, str(ENTRY), "test-alert", "--repeat", "1"],
-                             cwd=str(ENTRY.parent), stdout=subprocess.DEVNULL,
+            subprocess.Popen(self_command("test-alert", "--repeat", "1"),
+                             cwd=subprocess_cwd(), stdout=subprocess.DEVNULL,
                              stderr=subprocess.DEVNULL, creationflags=_CREATE_NO_WINDOW)
         except OSError as exc:
             messagebox.showerror("测试失败", str(exc))
@@ -373,8 +373,8 @@ class Panel:
                 "前提：客户端里登录着学习通，且客户端已关闭。\n\n继续吗？"):
             return
         result = subprocess.run(
-            [sys.executable, str(ENTRY), "browser-cookie", "--browser", "cxstudy"],
-            cwd=str(ENTRY.parent), capture_output=True, text=True, timeout=180,
+            self_command("browser-cookie", "--browser", "cxstudy"),
+            cwd=subprocess_cwd(), capture_output=True, text=True, timeout=180,
             encoding="utf-8", errors="replace", creationflags=_CREATE_NO_WINDOW)
         output = (result.stdout or "") + (result.stderr or "")
         if result.returncode == 0:
@@ -408,7 +408,7 @@ class Panel:
         if runtime.instance_running("tray"):
             return True
         try:
-            subprocess.Popen([sys.executable, str(ENTRY), "tray"], cwd=str(ENTRY.parent),
+            subprocess.Popen(self_command("tray"), cwd=subprocess_cwd(),
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                              creationflags=_CREATE_NO_WINDOW)
         except OSError as exc:

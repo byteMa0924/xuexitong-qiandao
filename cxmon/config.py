@@ -54,6 +54,18 @@ DEFAULT_CONFIG = {
         "webhook": "",             # 可选：Server酱 / 钉钉 / 企业微信机器人地址，推送到手机
     },
 
+    # ---------- 网络异常提示 ----------
+    # 断网是最阴的故障：心跳照打、只是"暂无新签到"，看起来一切正常，
+    # 其实 26 个班一个都扫不到。所以连续连不上要主动推手机告诉你。
+    "network": {
+        "notify": True,              # 网络异常时推手机（关掉就只写日志）
+        "down_rounds": 3,            # 连续几轮"所有班级都连不上"才告警（3 轮 ≈ 24 秒）
+        "flaky_rounds": 5,           # 连续几轮"部分班级连不上"才告警
+        "recover_notify": True,      # 网络恢复时也推一条，让你知道又能靠它了
+        "startup_retries": 3,        # 启动时拉不到课程列表的重试次数
+        "startup_retry_delay": 5.0,  # 每次重试之间的间隔（秒）
+    },
+
     # ---------- 文件 ----------
     "state_file": "state.json",   # 已提醒过的活动记录（去重）
     "log_file": "monitor.log",
@@ -72,8 +84,13 @@ def _deep_merge(base: dict, override: dict) -> dict:
 
 
 def default_config_path() -> Path:
-    """项目根目录下的 config.json。"""
-    return Path(__file__).resolve().parent.parent / "config.json"
+    """配置文件路径：exe 旁边（打包后）或项目根目录（源码运行）。
+
+    打包后不能再用 __file__ —— 那会指向解包出来的临时目录，
+    配置写进去程序一退出就没了。
+    """
+    from .paths import app_dir
+    return app_dir() / "config.json"
 
 
 def load_config(path=None) -> dict:
