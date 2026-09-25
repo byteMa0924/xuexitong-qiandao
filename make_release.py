@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import shutil
 import zipfile
 from pathlib import Path
@@ -19,11 +20,20 @@ ROOT = Path(__file__).resolve().parent
 SRC = ROOT / "dist" / "cxmon"
 USAGE_SRC = ROOT / "使用说明.txt"
 USAGE_DST = SRC / "使用说明.txt"
+HASH_DST = SRC / "SHA256.txt"
 ZIP = ROOT / "dist" / "cxmon-windows-x64.zip"
 
 # 这些是本地运行产物，绝不能进发布包（config.json 里装着 Cookie 和推送 key）
 JUNK = ("config.json", "state.json", "state.json.tmp", "monitor.log",
         "monitor.pid", "tray.pid", "panel.pid", "panel.show")
+
+
+def _sha256(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest().upper()
 
 
 def main() -> int:
@@ -52,7 +62,22 @@ def main() -> int:
     if not cleaned:
         print("        - nothing to remove")
 
-    print("[3/3] zipping ...")
+    print("[3/3] computing hash and zipping ...")
+
+    # exe 的校验值随包一起发给用户，比写在发布页上更可靠
+    # （手工把哈希抄进发布说明一定会抄错 —— 第一次发布就抄错了）
+    exe = SRC / "cxmon.exe"
+    digest = _sha256(exe) if exe.exists() else ""
+    if digest:
+        HASH_DST.write_text(
+            f"# cxmon.exe 的 SHA256 校验值\n"
+            f"# 校验方法（PowerShell）: Get-FileHash .\\cxmon.exe -Algorithm SHA256\n"
+            f"{digest}  cxmon.exe\n",
+            encoding="utf-8")
+        print(f"        cxmon.exe SHA256 = {digest}")
+    else:
+        print("        [WARN] 没找到 cxmon.exe，跳过校验值")
+
     if ZIP.exists():
         ZIP.unlink()
     with zipfile.ZipFile(ZIP, "w", zipfile.ZIP_DEFLATED) as z:
@@ -76,6 +101,9 @@ def main() -> int:
     print()
     print(f"  release : {ZIP}  ({size_mb:.1f} MB)")
     print(f"  top     : {', '.join(top[:6])}")
+    if digest:
+        print(f"  sha256  : {digest}")
+        print("            (also written to SHA256.txt inside the zip)")
     print()
     print("  next    : upload this zip to GitHub Releases (NOT into the repo).")
     return 0
